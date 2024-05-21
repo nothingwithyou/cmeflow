@@ -11,6 +11,8 @@ class CMESequence(torch.utils.data.Dataset):
     def __init__(self,
                  data,
                  sequence_length,
+                 datamax=6649.7251,
+                 datamin=0,
                  targets=None,
                  transform=None,
                  train=True):
@@ -27,8 +29,8 @@ class CMESequence(torch.utils.data.Dataset):
         self.count = 0
         self.train = train
         self.transform = transform
-        self.datamax = [6649.7251]       # [7979,  213,  333]
-        self.datamin = [0]        # [980, -336, -307]
+        self.datamax = [datamax]      # [7979,  213,  333]
+        self.datamin = [datamin]       # [980, -336, -307]
         # Sequence length of each training sample
         # Number of data samples
 
@@ -120,12 +122,6 @@ def read_all(data_path):
         assert (len(gt_name_list) == len(img1_name_list))
         assert (len(img2_name_list) == len(img1_name_list))
 
-        # Serialize data into file:
-        json.dump(img1_name_list, open(data_path + "/img1_name_list.json",
-                                       'w'))
-        json.dump(img2_name_list, open(data_path + "/img2_name_list.json",
-                                       'w'))
-        json.dump(gt_name_list, open(data_path + "/gt_name_list.json", 'w'))
     return img1_name_list, img2_name_list, gt_name_list
 
 
@@ -136,5 +132,5 @@ def build_train_dataset(args):
         transforms.Resize(args.image_size, antialias=True),
         transforms.Normalize(mean=[0.5], std=[0.5]),
     ])
-    datasets = CMESequence([im1, im2], args.sequence_length, gt, transform=img_trans)
+    datasets = CMESequence([im1, im2], args.sequence_length, args.data_max, args.data_min, gt, transform=img_trans)
     return datasets

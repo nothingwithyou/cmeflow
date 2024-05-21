@@ -5,10 +5,62 @@ import torch.nn.functional as F
 from .backbone import CNNEncoder
 from .transformer import FeatureTransformer, FeatureFlowAttention
 from .matching import global_correlation_softmax, local_correlation_softmax
-from .geometry import flow_warp
 from .utils import FieldWarper
 from .utils import feature_add_position
 from .loss import gradient_operator, laplace_operator, curl_operator
+
+
+def coords_grid(b, h, w, homogeneous=False, device=None):
+    y, x = torch.meshgrid(torch.arange(h), torch.arange(w))  # [H, W]
+
+    stacks = [x, y]
+
+    if homogeneous:
+        ones = torch.ones_like(x)  # [H, W]
+        stacks.append(ones)
+
+    grid = torch.stack(stacks, dim=0).float()  # [2, H, W] or [3, H, W]
+
+    grid = grid[None].repeat(b, 1, 1, 1)  # [B, 2, H, W] or [B, 3, H, W]
+
+    if device is not None:
+        grid = grid.to(device)
+
+    return grid
+
+
+def bilinear_sample(img, sample_coords, mode='bilinear', padding_mode='zeros', return_mask=False):
+    # img: [B, C, H, W]
+    # sample_coords: [B, 2, H, W] in image scale
+    if sample_coords.size(1) != 2:  # [B, H, W, 2]
+        sample_coords = sample_coords.permute(0, 3, 1, 2)
+
+    b, _, h, w = sample_coords.shape
+
+    # Normalize to [-1, 1]
+    x_grid = 2 * sample_coords[:, 0] / (w - 1) - 1
+    y_grid = 2 * sample_coords[:, 1] / (h - 1) - 1
+
+    grid = torch.stack([x_grid, y_grid], dim=-1)  # [B, H, W, 2]
+
+    img = F.grid_sample(img, grid, mode=mode, padding_mode=padding_mode, align_corners=True)
+
+    if return_mask:
+        mask = (x_grid >= -1) & (y_grid >= -1) & (x_grid <= 1) & (y_grid <= 1)  # [B, H, W]
+
+        return img, mask
+
+    return img
+
+
+def flow_warp(feature, flow, mask=False, padding_mode='zeros'):
+    b, c, h, w = feature.size()
+    assert flow.size(1) == 2
+
+    grid = coords_grid(b, h, w).to(flow.device) + flow  # [B, 2, H, W]
+
+    return bilinear_sample(feature, grid, padding_mode=padding_mode,
+                           return_mask=mask)
 
 
 class UTFlow(nn.Module):
@@ -131,7 +183,7 @@ class UTFlow(nn.Module):
 
             feature0, feature1 = feature_add_position(feature0, feature1, attn_splits, self.feature_channels)
 
-            # Transformer
+            # Swin Transformer
             feature0, feature1 = self.transformer(feature0, feature1, attn_num_splits=attn_splits)
 
             if corr_radius == -1:
@@ -159,14 +211,6 @@ class UTFlow(nn.Module):
             if scale_idx == self.num_scales - 1:
                 flow_up = self.upsample_flow(flow, feature0)
                 flow_preds.append(flow_up)
-        if flow_old:
-            flow_pred, f_u_star, f_refinement, f_phi = self.corrector(flow_old, flow_preds[-1])
-            flow_preds.append(flow_pred)
-            prev_vorticity = curl_operator(flow_old)
-            current_vorticity = curl_operator(flow_pred)
-            warped_prev = FieldWarper.backward_warp(tensorInput=current_vorticity, tensorFlow=flow_pred)
-            loss_warp_curl = 1.0 * nn.MSELoss()(prev_vorticity, warped_prev)
-            results_dict['loss_curl'] = loss_warp_curl
         results_dict.update({'flow_preds': flow_preds})
 
         return results_dict

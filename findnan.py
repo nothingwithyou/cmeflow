@@ -154,7 +154,6 @@ def get_args_parser_my():
     parser.add_argument('--fwd_bwd_consistency_check', action='store_true',
                         help='forward backward consistency check with bidirection flow')
 
-    # predict on sintel and kitti test set for submission
     parser.add_argument('--submission', action='store_true',
                         help='submission to sintel or kitti test sets')
     parser.add_argument('--output_path', default='output', type=str,

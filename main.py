@@ -22,6 +22,11 @@ def get_args_parser():
                         help='where to save the training log and models')
     parser.add_argument('--image_size', default=[256, 256], type=int, nargs='+',        # [720, 160]
                         help='image size for training')
+    parser.add_argument('--data_max', default=[6649.7251], type=float, nargs='+',  # [720, 160]
+                        help='image max value')
+    parser.add_argument('--data_min', default=[0], type=float, nargs='+',  # [720, 160]
+                        help='image min values')
+
     parser.add_argument('--sequence_length', default=5, type=int, help='the input image sequence length')
     parser.add_argument('--padding_factor', default=16, type=int,
                         help='the input should be divisible by padding_factor, otherwise do padding')
@@ -30,8 +35,6 @@ def get_args_parser():
                         help='exclude very large motions during training')
     parser.add_argument('--train_dir', default='halo/f1024', type=str, nargs='+',
                         help='train dataset')
-    parser.add_argument('--val_dir', default='', type=str, nargs='+',
-                        help='validation dataset')
     parser.add_argument('--with_speed_metric', action='store_true',
                         help='with speed metric when evaluation')
 
@@ -44,9 +47,8 @@ def get_args_parser():
     parser.add_argument('--weight_decay', default=1e-5, type=float)
     parser.add_argument('--grad_clip', default=0.9, type=float)
     parser.add_argument('--num_steps', default=60000, type=int)
-    parser.add_argument('--seed', default=326, type=int)
+    parser.add_argument('--seed', default=250, type=int)
     parser.add_argument('--summary_freq', default=100, type=int)
-    parser.add_argument('--val_freq', default=10000, type=int)
     parser.add_argument('--save_ckpt_freq', default=5000, type=int)
     parser.add_argument('--save_latest_ckpt_freq', default=500, type=int)
 
@@ -88,33 +90,6 @@ def get_args_parser():
                         help='Weight for flow div loss')
     parser.add_argument('--lambda_ts', type=float, default=1,
                         help='Weight for spatiotemporal loss')
-
-    # evaluation
-    parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--save_eval_to_file', action='store_true')
-    parser.add_argument('--evaluate_matched_unmatched', action='store_true')
-
-    # inference on a directory
-    parser.add_argument('--inference_dir', default=None, type=str)
-    parser.add_argument('--inference_size', default=None, type=int, nargs='+',
-                        help='can specify the inference size')
-    parser.add_argument('--dir_paired_data', action='store_true',
-                        help='Paired data in a dir instead of a sequence')
-    parser.add_argument('--save_flo_flow', action='store_true')
-    parser.add_argument('--pred_bidir_flow', action='store_true',
-                        help='predict bidirectional flow')
-    parser.add_argument('--fwd_bwd_consistency_check', action='store_true',
-                        help='forward backward consistency check with bidirection flow')
-
-    # predict on sintel and kitti test set for submission
-    parser.add_argument('--submission', action='store_true',
-                        help='submission to sintel or kitti test sets')
-    parser.add_argument('--output_path', default='output', type=str,
-                        help='where to save the prediction results')
-    parser.add_argument('--save_vis_flow', action='store_true',
-                        help='visualize flow prediction as .png image')
-    parser.add_argument('--no_save_flo', action='store_true',
-                        help='not save flow as .flo')
 
     # distributed training
     parser.add_argument('--local_rank', default=0, type=int)

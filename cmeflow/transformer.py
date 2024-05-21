@@ -19,7 +19,6 @@ def single_head_full_attention(q, k, v):
 def generate_shift_window_attn_mask(input_resolution, window_size_h, window_size_w,
                                     shift_size_h, shift_size_w, device=torch.device('cuda')):
     # Ref: https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
-    # calculate attention mask for SW-MSA
     h, w = input_resolution
     img_mask = torch.zeros((1, h, w, 1)).to(device)  # 1 H W 1
     h_slices = (slice(0, -window_size_h),
@@ -51,7 +50,6 @@ def single_head_split_window_attention(q, k, v,
                                        attn_mask=None,
                                        ):
     # Ref: https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
-    # q, k, v: [B, L, C]
     assert q.dim() == k.dim() == v.dim() == 3
 
     assert h is not None and w is not None
@@ -96,7 +94,6 @@ def single_head_split_window_attention(q, k, v,
     out = merge_splits(out.view(b_new, h // num_splits, w // num_splits, c),
                        num_splits=num_splits, channel_last=True)  # [B, H, W, C]
 
-    # shift back
     if with_shift:
         out = torch.roll(out, shifts=(shift_size_h, shift_size_w), dims=(1, 2))
 
@@ -133,7 +130,6 @@ class TransformerLayer(nn.Module):
 
         self.norm1 = nn.LayerNorm(d_model)
 
-        # no ffn after self-attn, with ffn after cross-attn
         if not self.no_ffn:
             in_channels = d_model * 2
             self.mlp = nn.Sequential(
@@ -151,18 +147,17 @@ class TransformerLayer(nn.Module):
                 attn_num_splits=None,
                 **kwargs,
                 ):
-        # source, target: [B, L, C]
+
         query, key, value = source, target, target
 
-        # single-head attention
+
         query = self.q_proj(query)  # [B, L, C]
         key = self.k_proj(key)  # [B, L, C]
         value = self.v_proj(value)  # [B, L, C]
 
         if self.attention_type == 'swin' and attn_num_splits > 1:
             if self.nhead > 1:
-                # we observe that multihead attention slows down the speed and increases the memory consumption
-                # without bringing obvious performance gains and thus the implementation is removed
+
                 raise NotImplementedError
             else:
                 message = single_head_split_window_attention(query, key, value,
@@ -186,8 +181,6 @@ class TransformerLayer(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    """self attention + cross attention + FFN"""
-
     def __init__(self,
                  d_model=256,
                  nhead=1,
@@ -220,7 +213,6 @@ class TransformerBlock(nn.Module):
                 attn_num_splits=None,
                 **kwargs,
                 ):
-        # source, target: [B, L, C]
 
         # self attention
         source = self.self_attn(source, source,
@@ -230,7 +222,6 @@ class TransformerBlock(nn.Module):
                                 attn_num_splits=attn_num_splits,
                                 )
 
-        # cross attention and ffn
         source = self.cross_attn_ffn(source, target,
                                      height=height,
                                      width=width,
@@ -278,15 +269,13 @@ class FeatureTransformer(nn.Module):
         b, c, h, w = feature0.shape
         assert self.d_model == c
 
-        feature0 = feature0.flatten(-2).permute(0, 2, 1)  # [B, H*W, C]
-        feature1 = feature1.flatten(-2).permute(0, 2, 1)  # [B, H*W, C]
+        feature0 = feature0.flatten(-2).permute(0, 2, 1)
+        feature1 = feature1.flatten(-2).permute(0, 2, 1)
 
         if self.attention_type == 'swin' and attn_num_splits > 1:
-            # global and refine use different number of splits
             window_size_h = h // attn_num_splits
             window_size_w = w // attn_num_splits
 
-            # compute attn mask once
             shifted_window_attn_mask = generate_shift_window_attn_mask(
                 input_resolution=(h, w),
                 window_size_h=window_size_h,
@@ -294,11 +283,10 @@ class FeatureTransformer(nn.Module):
                 shift_size_h=window_size_h // 2,
                 shift_size_w=window_size_w // 2,
                 device=feature0.device,
-            )  # [K*K, H/K*W/K, H/K*W/K]
+            )
         else:
             shifted_window_attn_mask = None
 
-        # concat feature0 and feature1 in batch dimension to compute in parallel
         concat0 = torch.cat((feature0, feature1), dim=0)  # [2B, H*W, C]
         concat1 = torch.cat((feature1, feature0), dim=0)  # [2B, H*W, C]
 
@@ -310,12 +298,10 @@ class FeatureTransformer(nn.Module):
                             attn_num_splits=attn_num_splits,
                             )
 
-            # update feature1
             concat1 = torch.cat(concat0.chunk(chunks=2, dim=0)[::-1], dim=0)
 
         feature0, feature1 = concat0.chunk(chunks=2, dim=0)  # [B, H*W, C]
 
-        # reshape back
         feature0 = feature0.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()  # [B, C, H, W]
         feature1 = feature1.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()  # [B, C, H, W]
 
@@ -354,12 +340,6 @@ class FeatureFlowAttention(nn.Module):
 
         query = feature0.view(b, c, h * w).permute(0, 2, 1)  # [B, H*W, C]
 
-        # a note: the ``correct'' implementation should be:
-        # ``query = self.q_proj(query), key = self.k_proj(query)''
-        # this problem is observed while cleaning up the code
-        # however, this doesn't affect the performance since the projection is a linear operation,
-        # thus the two projection matrices for key can be merged
-        # so I just leave it as is in order to not re-train all models :)
         query = self.q_proj(query)  # [B, H*W, C]
         key = self.k_proj(query)  # [B, H*W, C]
 

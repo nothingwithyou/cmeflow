@@ -46,26 +46,16 @@ class CNNEncoder(nn.Module):
         self.num_branch = num_output_scales
 
         feature_dims = [64, 96, 128]
-        # self.conv1 = nn.Conv2d(1, feature_dims[0]//2, kernel_size=7, stride=2, padding=3, bias=False)  # 1/2
-        # self.norm1 = norm_layer(feature_dims[0]//2)
-        # self.relu1 = nn.ReLU(inplace=True)
-        # self.conv11 = nn.Sequential(
-        #               nn.Conv2d(feature_dims[0]//2, feature_dims[0], kernel_size=7, stride=2, padding=3, bias=False),
-        #               norm_layer(feature_dims[0]),
-        #               nn.ReLU(inplace=True)
-        #                             )   # 1/4
-        self.conv1 = nn.Conv2d(1, feature_dims[0], kernel_size=7, stride=2, padding=3, bias=False)  # 1/2
+        self.conv1 = nn.Conv2d(1, feature_dims[0], kernel_size=7, stride=2, padding=3, bias=False)
         self.norm1 = norm_layer(feature_dims[0])
         self.relu1 = nn.ReLU(inplace=True)
         self.in_planes = feature_dims[0]
-        self.layer1 = self._make_layer(feature_dims[0], stride=1, norm_layer=norm_layer)  # 1/2
-        self.layer2 = self._make_layer(feature_dims[1], stride=2, norm_layer=norm_layer)  # 1/4
+        self.layer1 = self._make_layer(feature_dims[0], stride=1, norm_layer=norm_layer)
+        self.layer2 = self._make_layer(feature_dims[1], stride=2, norm_layer=norm_layer)
 
-        # highest resolution 1/4 or 1/8
-        stride = 2 if num_output_scales == 1 else 1
-        self.layer3 = self._make_layer(feature_dims[2], stride=stride,
+        self.layer3 = self._make_layer(feature_dims[2], stride=1,
                                        norm_layer=norm_layer,
-                                       )  # 1/4 or 1/8
+                                       )
 
         self.conv2 = nn.Conv2d(feature_dims[2], output_dim, 1, 1, 0)
 
@@ -89,7 +79,7 @@ class CNNEncoder(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
+            elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm, nn.LayerNorm)):
                 if m.weight is not None:
                     nn.init.constant_(m.weight, 1)
                 if m.bias is not None:
@@ -109,15 +99,11 @@ class CNNEncoder(nn.Module):
         x = self.norm1(x)
         x = self.relu1(x)
 
-        x = self.layer1(x)  # 1/2
-        x = self.layer2(x)  # 1/4
-        x = self.layer3(x)  # 1/8 or 1/4
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
 
         x = self.conv2(x)
-
-        if self.num_branch > 1:
-            out = self.trident_conv([x] * self.num_branch)  # high to low res
-        else:
-            out = [x]
+        out = self.trident_conv([x] * self.num_branch)
 
         return out
