@@ -58,7 +58,7 @@ def get_args_parser():
     parser.add_argument('--strict_resume', action='store_true')
     parser.add_argument('--no_resume_optimizer', action='store_true')
 
-    # GMFlow model
+    # CMEFlow model
     parser.add_argument('--num_scales', default=1, type=int,
                         help='basic cmeflow model uses a single 1/8 feature, the refinement uses 1/4 feature')
     parser.add_argument('--feature_channels', default=128, type=int)
