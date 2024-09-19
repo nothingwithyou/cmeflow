@@ -56,9 +56,8 @@ class CMESequence(torch.utils.data.Dataset):
             data_dict['gt'] = label
         else:
             label = None
-        for n in range(self.sequence_length):
-            img1_path = self.data[0][idx][n]
-            img2_path = self.data[1][idx][n]
+            img1_path = self.data[0][idx]
+            img2_path = self.data[1][idx]
             img1_name = img1_path.split('/')[-1].replace('.pt', '')
             name_list.append(img1_name)
             # s1 = torch.FloatTensor(torch.load(img1_path))
@@ -67,23 +66,13 @@ class CMESequence(torch.utils.data.Dataset):
             s2 = torch.load(img2_path)
             # s1 = self.channel_norm(s1)
             # s2 = self.channel_norm(s2)
-            s1 = s1 / s1.max()
-            s2 = s2 / s2.max()
-
-            # s1 = torch.unsqueeze(s1[:, 7:], dim=0)
-            # s2 = torch.unsqueeze(s2[:, 7:], dim=0)
-            s1 = torch.unsqueeze(s1, dim=0)
-            s2 = torch.unsqueeze(s2, dim=0)
+            s1 = (s1 - self.datamin) / (self.datamax - self.datamin)
+            s2 = (s2 - self.datamin) / (self.datamax - self.datamin)
             if self.transform:
                 s1 = self.transform(s1)
                 s2 = self.transform(s2)
-            img1_list.append(torch.unsqueeze(s1, dim=0))
-            img2_list.append(torch.unsqueeze(s2, dim=0))
-        img1_list = torch.cat(img1_list, dim=0)
-        img2_list = torch.cat(img2_list, dim=0)
-
-        data_dict['img1'] = img1_list
-        data_dict['img2'] = img2_list
+        data_dict['img1'] = s1
+        data_dict['img2'] = s2
         data_dict['name'] = name_list[0] + '-' + name_list[-1]
         return data_dict
 
