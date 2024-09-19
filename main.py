@@ -12,6 +12,7 @@ from data.datasets import build_train_dataset
 from cmeflow.UTFflow import UTFlow
 from cmeflow.loss import unsupervised_error
 from utils.logger import Logger
+from utils import misc
 
 
 def get_args_parser():
@@ -103,29 +104,6 @@ def get_args_parser():
     return parser
 
 
-def train_fun(model, i1, i2, args):
-    a1 = model(i1, i2,
-               attn_splits_list=args.attn_splits_list,
-               corr_radius_list=args.corr_radius_list,
-               prop_radius_list=args.prop_radius_list, )
-    a2 = model(i2, i1,
-               attn_splits_list=args.attn_splits_list,
-               corr_radius_list=args.corr_radius_list,
-               prop_radius_list=args.prop_radius_list, )
-    flow1 = a1['flow_preds']
-    flow2 = a2['flow_preds']
-    if 'loss_curl' in a1:
-        curl_loss = (a1['loss_curl'] + a2['loss_curl ']) / 2
-    else:
-        curl_loss = None
-    sloss, loss_dic = unsupervised_error(flow1, flow2, i1, i2, args, curl_loss=curl_loss)
-    sloss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-    optimizer.step()
-    lr_scheduler.step()
-    return loss_dic, flow1
-
-
 if __name__ == '__main__':
     torchvision.disable_beta_transforms_warning()
     parser = get_args_parser()
@@ -193,25 +171,6 @@ if __name__ == '__main__':
 
         print(' start_step: %d' % (start_step))
 
-    # inferece on a dir
-    """
-        if args.inference_dir is not None:
-        inference_on_dir(model_without_ddp,
-                         inference_dir=args.inference_dir,
-                         output_path=args.output_path,
-                         padding_factor=args.padding_factor,
-                         inference_size=args.inference_size,
-                         paired_data=args.dir_paired_data,
-                         save_flo_flow=args.save_flo_flow,
-                         attn_splits_list=args.attn_splits_list,
-                         corr_radius_list=args.corr_radius_list,
-                         prop_radius_list=args.prop_radius_list,
-                         pred_bidir_flow=args.pred_bidir_flow,
-                         fwd_bwd_consistency_check=args.fwd_bwd_consistency_check)
-
-        return
-    """
-
     # training datset
     train_dataset = build_train_dataset(args)
     print('Number of training images:', len(train_dataset))
@@ -224,7 +183,7 @@ if __name__ == '__main__':
     last_epoch = start_step if args.resume and start_step > 0 else -1
     lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, args.lr,
-        args.num_steps * args.sequence_length + 10,
+        args.num_steps,  # args.num_steps * args.sequence_length + 10,
         pct_start=0.05,
         cycle_momentum=False,
         anneal_strategy='cos',
@@ -237,7 +196,7 @@ if __name__ == '__main__':
     fetch = iter(train_loader)
     print('Start training')
     model.train()
-    with tqdm(total=(args.num_steps-start_step)*args.sequence_length, ncols=120) as _tqdm:
+    with tqdm(total=(args.num_steps-start_step), ncols=120) as _tqdm:
         for i in range(start_step, args.num_steps):
             try:
                 inputs = next(fetch)
@@ -245,25 +204,35 @@ if __name__ == '__main__':
                 fetch = iter(train_loader)
                 inputs = next(fetch)
             # mannual change random seed for shuffling every epoch
-            # img1, img2 = inputs['img1'].to('cuda'), inputs['img2'].to('cuda')
-            img1, img2 = \
-                inputs['img1'].permute(1, 0, 2, 3, 4).contiguous(), inputs['img2'].permute(1, 0, 2, 3, 4).contiguous()
+            img1, img2 = inputs['img1'].to('cuda'), inputs['img2'].to('cuda')
+            # img1, img2 = \
+            #     inputs['img1'].permute(1, 0, 2, 3, 4).contiguous(), inputs['img2'].permute(1, 0, 2, 3, 4).contiguous()
 
             flow_name = inputs['name']
             out = []
             # train_opt = torch.compile(train_fun)
             train_opt = train_fun
-            for seq in range(args.sequence_length):
-                # more efficient zero_grad
-                # for param in model_without_ddp.parameters():
-                #     param.grad = None
-                optimizer.zero_grad()
-                metrics, sout = train_opt(model, img1[seq].to('cuda'), img2[seq].to('cuda'), args)
-                logger.push(metrics)
+            a1 = model(img1, img2, flow_old=None,
+                       attn_splits_list=args.attn_splits_list,
+                       corr_radius_list=args.corr_radius_list,
+                       prop_radius_list=args.prop_radius_list, )
 
-                logger.add_image_summary(img1, img2, sout)
-                _tqdm.set_postfix(loss='{:.4f}'.format(metrics.total))
-                _tqdm.update(1)
+            a2 = model(img2, img1,
+                       attn_splits_list=args.attn_splits_list,
+                       corr_radius_list=args.corr_radius_list,
+                       prop_radius_list=args.prop_radius_list, )
+            flow1 = a1['flow_preds']
+            flow2 = a2['flow_preds']
+            sloss, loss_dic = unsupervised_error(flow1, flow2, img1, img2, args)
+            sloss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+            optimizer.step()
+            # lr_scheduler.step()
+            logger.push(loss_dic)
+            logger.add_image_summary(img1, img2, flow1)
+            _tqdm.set_postfix(loss='{:.4f}'.format(loss_dic.total))
+            _tqdm.update(1)
+
             if (i+1) % args.save_ckpt_freq == 0 or i == args.num_steps:
                 checkpoint_path = os.path.join(args.checkpoint_dir, 'step_%06d.pth' % (i+1))
                 torch.save({
