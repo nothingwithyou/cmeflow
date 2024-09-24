@@ -60,20 +60,20 @@ def get_args_parser():
     parser.add_argument('--no_resume_optimizer', action='store_true')
 
     # CMEFlow model
-    parser.add_argument('--num_scales', default=1, type=int,
+    parser.add_argument('--num_scales', default=2, type=int,
                         help='basic cmeflow model uses a single 1/8 feature, the refinement uses 1/4 feature')
     parser.add_argument('--feature_channels', default=128, type=int)
-    parser.add_argument('--upsample_factor', default=8, type=int)
+    parser.add_argument('--upsample_factor', default=4, type=int)
     parser.add_argument('--num_transformer_layers', default=6, type=int)
     parser.add_argument('--num_head', default=1, type=int)
     parser.add_argument('--attention_type', default='swin', type=str)
     parser.add_argument('--ffn_dim_expansion', default=4, type=int)
 
-    parser.add_argument('--attn_splits_list', default=[2], type=int, nargs='+',
+    parser.add_argument('--attn_splits_list', default=[2, 8], type=int, nargs='+',
                         help='number of splits in attention')
-    parser.add_argument('--corr_radius_list', default=[-1], type=int, nargs='+',
+    parser.add_argument('--corr_radius_list', default=[-1, 4], type=int, nargs='+',
                         help='correlation radius for matching, -1 indicates global matching')
-    parser.add_argument('--prop_radius_list', default=[-1], type=int, nargs='+',
+    parser.add_argument('--prop_radius_list', default=[-1, 1], type=int, nargs='+',
                         help='self-attention radius for flow propagation, -1 indicates global attention')
 
     # loss
