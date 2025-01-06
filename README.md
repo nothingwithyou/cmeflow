@@ -1,6 +1,7 @@
 CME: UTFlowNet
 ====
-### Paper
+### [Paper](https://iopscience.iop.org/article/10.3847/1538-4365/ad7eb9) 
+CME velocity field calculation model based on unsupervised Transformer optical flow network.
 ## Install
 ```
 git clone https://github.com/nothingwithyou/cmeflow.git
