@@ -66,8 +66,7 @@ def _warp_deltas(photo):
     """1st order smoothness, compute smoothness loss components"""
     weight = construct_gradient_kernel(device)
     pad_photo = torch.nn.ReplicationPad2d(1)(photo)
-    delta_u = F.conv2d(pad_photo, weight)
-    delta_v = F.conv2d(pad_photo, weight)
+    delta_u, delta_v = F.conv2d(pad_photo, weight)
     return delta_u + delta_v
 
 
